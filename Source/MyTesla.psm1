@@ -2,15 +2,24 @@ $ModulePath = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $BuildData = Import-LocalizedData -BaseDirectory $ModulePath -FileName build.psd1
 
 Push-Location -Path $ModulePath -StackName 'DevModuleLoader'
+if($null -ne $BuildData['Prefix']) {
+
+}
 $Scripts = Get-ChildItem -Path $BuildData.SourceDirectories -File -Filter *.ps1 | Select-Object -ExpandProperty FullName
-if(-not [string]::IsNullOrWhiteSpace($BuildData.Prefix) -and (Test-Path -Path $BuildData.Prefix)) {
-        . $BuildData.Prefix
+if(-not [string]::IsNullOrWhiteSpace($BuildData.Prefix)) {
+        $PrefixPath = Join-Path -Path $PSScriptRoot -ChildPath $BuildData.Prefix
+        if(Test-Path -Path $PrefixPath) {
+                . $PrefixPath
+        }
 }
 foreach($Script in $Scripts) {
         . $Script
 }
-if(-not [string]::IsNullOrWhiteSpace($BuildData.Suffix) -and (Test-Path -Path $BuildData.Suffix)) {
-        . $BuildData.Suffix
+if(-not [string]::IsNullOrWhiteSpace($BuildData.Suffix)) {
+        $SuffixPath = Join-Path -Path $PSScriptRoot -ChildPath $BuildData.Suffix
+        if(Test-Path -Path $SuffixPath) {
+                . $SuffixPath
+        }
 }
 $SearchRecursive = $true
 $SearchRootOnly  = $false
