@@ -13,6 +13,10 @@ function Invoke-TeslaAPI {
         [switch]
         $Auth,
 
+        # Calls Resume-TeslaVehicle to wake the car up before involing API. Will not wake up if we called the API within the last minutes.
+        [switch]
+        $WakeUp,
+
         # Parameter help description
         [Parameter(DontShow)]
         [string]
@@ -22,6 +26,25 @@ function Invoke-TeslaAPI {
     $Fragment = $Fragment -replace '^/+|/+$'
     $BaseUri = $BaseUri -replace '^/+|/+$'
     
+    if($WakeUp.IsPresent) {
+        $Now = Get-Date
+        $LastSeenSince = ($Now - $Script:TeslaConfiguration['LastSeen']).TotalMinutes
+        if($LastSeenSince -gt 8) {
+            Write-Verbose -Message 'Waking up car...'
+            $ResumeParams = @{
+                Wait = $true
+            }
+            if($Fragment -match '^api\/1\/vehicles\/(\d+)') {
+                $ResumeParams['Id'] = $Matches[1]
+            }
+            $null = Resume-TeslaVehicle @ResumeParams
+            Write-Verbose -Message 'Car is online'
+        }
+        else {
+            Write-Verbose -Message 'Car seen recently, no need to wake up'
+        }
+    }
+
     $Params = @{
         Uri = '{0}/{1}' -f $BaseUri, $Fragment
         Method = $Method
@@ -48,4 +71,6 @@ function Invoke-TeslaAPI {
     }
 
     Invoke-RestMethod @Params
+
+    $Script:TeslaConfiguration['LastSeen'] = Get-Date
 }

@@ -24,5 +24,6 @@ function Import-TeslaContext {
     }
 
     $Script:TeslaConfiguration = $TeslaContext
+    $Script:TeslaConfiguration['LastSeen'] = [datetime]::MinValue
 
 }
