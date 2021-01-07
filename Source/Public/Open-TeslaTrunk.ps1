@@ -4,7 +4,7 @@ function Open-TeslaTrunk {
         # Id of Tesla Vehicle
         [Parameter()]
         [ValidateLength(11,200)]
-        [ValidatePattern('\d+')]
+        [ValidatePattern('\d+', ErrorMessage = '{0} is not a valid vehicle ID.')]
         [string]
         $Id,
 
