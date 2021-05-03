@@ -3,21 +3,19 @@ function Get-TeslaChargeState {
     param (
         # Id of Tesla Vehicle
         [Parameter()]
-        [ValidateLength(11,200)]
+        [ValidateLength(11, 200)]
         [ValidatePattern('\d+', ErrorMessage = '{0} is not a valid vehicle ID.')]
         [string]
         $Id
     )
     
-    if(-not $PSBoundParameters.ContainsKey('Id')) {
+    if (-not $PSBoundParameters.ContainsKey('Id') -and $Script:TeslaConfiguration.ContainsKey('CurrentVehicleId')) {
         $Id = $Script:TeslaConfiguration['CurrentVehicleId']
     }
     
-    if([string]::IsNullOrWhiteSpace($Id)) {
+    if ([string]::IsNullOrWhiteSpace($Id)) {
         throw 'Invalid Vehicle Id, use the parameter Id or set a default Id using Select-TeslaVehicle'
     }
-
     $Fragment = "api/1/vehicles/$Id/data_request/charge_state"
-    $null = Resume-TeslaVehicle -Id $Id -Wait
-    Invoke-TeslaAPI -Fragment $Fragment -Method 'GET' -Auth | Select-Object -ExpandProperty response
+    Invoke-TeslaAPI -Fragment $Fragment -Method 'GET' -Auth -WakeUp | Select-Object -ExpandProperty response
 }

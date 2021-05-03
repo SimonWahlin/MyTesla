@@ -1,4 +1,4 @@
-function Stop-TeslaHVAC {
+function Stop-TeslaSteeringWheelHeater {
     [CmdletBinding()]
     param (
         # Id of Tesla Vehicle
@@ -16,10 +16,10 @@ function Stop-TeslaHVAC {
     if([string]::IsNullOrWhiteSpace($Id)) {
         throw 'Invalid Vehicle Id, use the parameter Id or set a default Id using Select-TeslaVehicle'
     }
-
-    $null = Resume-TeslaVehicle -Id $Id -Wait
     
-    $Fragment = "api/1/vehicles/$Id/command/auto_conditioning_stop"
-    
-    Invoke-TeslaAPI -Fragment $Fragment -Method 'POST' -Auth | Select-Object -ExpandProperty response
+    $Fragment = "api/1/vehicles/$Id/command/remote_steering_wheel_heater_request"
+    $Body = @{
+        'on' = $false
+    }
+    Invoke-TeslaAPI -Fragment $Fragment -Method 'POST' -Body $Body -Auth -WakeUp | Select-Object -ExpandProperty response
 }

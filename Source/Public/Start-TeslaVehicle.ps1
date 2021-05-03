@@ -1,29 +1,30 @@
-function Open-TeslaTrunk {
-    [CmdletBinding()]
+function Start-TeslaVehicle {
+    [CmdletBinding(ConfirmImpact='Low')]
     param (
         # Id of Tesla Vehicle
         [Parameter()]
-        [ValidateLength(11, 200)]
+        [ValidateLength(11,200)]
         [ValidatePattern('\d+', ErrorMessage = '{0} is not a valid vehicle ID.')]
         [string]
         $Id,
 
-        # Select to upen front or rear trunk. Defaults to front (frunk)
-        [ValidateSet('front', 'rear')]
-        $WhichTrunk = 'front'
+        [Parmameter(Mandatory)]
+        [securestring]
+        $Password
     )
     
-    if (-not $PSBoundParameters.ContainsKey('Id')) {
+    if(-not $PSBoundParameters.ContainsKey('Id')) {
         $Id = $Script:TeslaConfiguration['CurrentVehicleId']
     }
     
-    if ([string]::IsNullOrWhiteSpace($Id)) {
+    if([string]::IsNullOrWhiteSpace($Id)) {
         throw 'Invalid Vehicle Id, use the parameter Id or set a default Id using Select-TeslaVehicle'
     }
 
-    $Fragment = "api/1/vehicles/$Id/command/actuate_trunk"
+    $Fragment = "api/1/vehicles/$Id/command/remote_start_drive"
     $Body = @{
-        which_trunk = $WhichTrunk
+        password = Unprotect-SecureString -SecureString $Password
     }
+    
     Invoke-TeslaAPI -Fragment $Fragment -Method 'POST' -Body $Body -Auth -WakeUp | Select-Object -ExpandProperty response
 }

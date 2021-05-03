@@ -1,10 +1,10 @@
-function Invoke-TeslaHorn {
+function Get-TeslaVehicleConfig {
     [CmdletBinding()]
     param (
         # Id of Tesla Vehicle
         [Parameter()]
         [ValidateLength(11, 200)]
-        [ValidatePattern('\d+')]
+        [ValidatePattern('\d+', ErrorMessage = '{0} is not a valid vehicle ID.')]
         [string]
         $Id
     )
@@ -17,6 +17,8 @@ function Invoke-TeslaHorn {
         throw 'Invalid Vehicle Id, use the parameter Id or set a default Id using Select-TeslaVehicle'
     }
 
-    $Fragment = "api/1/vehicles/$Id/command/honk_horn"
-    Invoke-TeslaAPI -Fragment $Fragment -Method 'POST' -Auth -WakeUp | Select-Object -ExpandProperty response
+        
+    $Fragment = "api/1/vehicles/$Id/data_request/vehicle_config"
+    
+    Invoke-TeslaAPI -Fragment $Fragment -Method 'GET' -Auth -WakeUp | Select-Object -ExpandProperty response
 }

@@ -26,15 +26,15 @@ function Invoke-TeslaAPI {
     $Fragment = $Fragment -replace '^/+|/+$'
     $BaseUri = $BaseUri -replace '^/+|/+$'
     
-    if($WakeUp.IsPresent) {
-        $Now = Get-Date
+    if ($WakeUp.IsPresent) {
+        $Now = [System.DateTimeOffset]::Now
         $LastSeenSince = ($Now - $Script:TeslaConfiguration['LastSeen']).TotalMinutes
-        if($LastSeenSince -gt 8) {
+        if ($LastSeenSince -gt 8) {
             Write-Verbose -Message 'Waking up car...'
             $ResumeParams = @{
                 Wait = $true
             }
-            if($Fragment -match '^api\/1\/vehicles\/(\d+)') {
+            if ($Fragment -match '^api\/1\/vehicles\/(\d+)') {
                 $ResumeParams['Id'] = $Matches[1]
             }
             $null = Resume-TeslaVehicle @ResumeParams
@@ -46,15 +46,15 @@ function Invoke-TeslaAPI {
     }
 
     $Params = @{
-        Uri = '{0}/{1}' -f $BaseUri, $Fragment
-        Method = $Method
+        Uri     = '{0}/{1}' -f $BaseUri, $Fragment
+        Method  = $Method
         Headers = @{
             'Content-Type' = 'application/json'
         }
     }
 
-    if($PSBoundParameters.ContainsKey('Body')) {
-        if($Body -is [hashtable]) {
+    if ($PSBoundParameters.ContainsKey('Body')) {
+        if ($Body -is [hashtable]) {
             $Params['Body'] = $Body | ConvertTo-Json
         } 
         elseif ($Body -is [string]) {
@@ -65,12 +65,12 @@ function Invoke-TeslaAPI {
         }
     }
 
-    if($Auth.IsPresent) {
+    if ($Auth.IsPresent) {
         $Token = Get-TeslaToken -Type 'Bearer'
         $Params['Headers']['Authorization'] = $Token
     }
 
-    Invoke-RestMethod @Params
+    Invoke-RestMethod @Params -ErrorAction 'Stop'
 
-    $Script:TeslaConfiguration['LastSeen'] = Get-Date
+    $Script:TeslaConfiguration['LastSeen'] = [System.DateTimeOffset]::Now
 }

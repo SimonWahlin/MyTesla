@@ -5,7 +5,7 @@
 function Unprotect-SecureString {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory,ValueFromPipeline)]
+        [Parameter(Mandatory, ValueFromPipeline)]
         [securestring]
         $SecureString
     )
@@ -13,14 +13,12 @@ function Unprotect-SecureString {
     process {
         $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureString);
 
-		try
-		{
-			return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr);
-		}
-		finally
-		{
-			[Runtime.InteropServices.Marshal]::FreeBSTR($bstr);
-		}
+        try {
+            return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr);
+        }
+        finally {
+            [Runtime.InteropServices.Marshal]::FreeBSTR($bstr);
+        }
     }
     
 }

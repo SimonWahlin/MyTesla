@@ -1,4 +1,4 @@
-function Set-TeslaSeatHeater {
+function Start-TeslaSteeringWheelHeater {
     [CmdletBinding()]
     param (
         # Id of Tesla Vehicle
@@ -6,17 +6,7 @@ function Set-TeslaSeatHeater {
         [ValidateLength(11,200)]
         [ValidatePattern('\d+', ErrorMessage = '{0} is not a valid vehicle ID.')]
         [string]
-        $Id,
-
-        [Parameter(Mandatory)]
-        [TeslaSeat]
-        $Seat,
-
-        [Parameter(Mandatory)]
-        [ValidateRange(0,3)]
-        [ValidateSet(0,1,2,3)]
-        [int]
-        $Level
+        $Id
     )
     
     if(-not $PSBoundParameters.ContainsKey('Id')) {
@@ -26,13 +16,10 @@ function Set-TeslaSeatHeater {
     if([string]::IsNullOrWhiteSpace($Id)) {
         throw 'Invalid Vehicle Id, use the parameter Id or set a default Id using Select-TeslaVehicle'
     }
-
-    $null = Resume-TeslaVehicle -Id $Id -Wait
     
-    $Fragment = "api/1/vehicles/$Id/command/remote_seat_heater_request"
+    $Fragment = "api/1/vehicles/$Id/command/remote_steering_wheel_heater_request"
     $Body = @{
-        heater = $Seat.value__
-        level = $Level
+        'on' = $true
     }
-    Invoke-TeslaAPI -Fragment $Fragment -Body $Body -Method 'POST' -Auth | Select-Object -ExpandProperty response
+    Invoke-TeslaAPI -Fragment $Fragment -Method 'POST' -Body $Body -Auth -WakeUp | Select-Object -ExpandProperty response
 }

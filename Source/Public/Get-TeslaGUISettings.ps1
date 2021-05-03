@@ -1,4 +1,4 @@
-function Get-TeslaDriveState {
+function Get-TeslaGUISettings {
     [CmdletBinding()]
     param (
         # Id of Tesla Vehicle
@@ -9,7 +9,7 @@ function Get-TeslaDriveState {
         $Id
     )
     
-    if (-not $PSBoundParameters.ContainsKey('Id')) {
+    if (-not $PSBoundParameters.ContainsKey('Id') -and $Script:TeslaConfiguration.ContainsKey('CurrentVehicleId')) {
         $Id = $Script:TeslaConfiguration['CurrentVehicleId']
     }
     
@@ -17,7 +17,6 @@ function Get-TeslaDriveState {
         throw 'Invalid Vehicle Id, use the parameter Id or set a default Id using Select-TeslaVehicle'
     }
 
-    $Fragment = "api/1/vehicles/$Id/data_request/drive_state"
-    $null = Resume-TeslaVehicle -Id $Id -Wait
-    Invoke-TeslaAPI -Fragment $Fragment -Method 'GET' -Auth | Select-Object -ExpandProperty response
+    $Fragment = "api/1/vehicles/$Id/data_request/gui_settings"
+    Invoke-TeslaAPI -Fragment $Fragment -Method 'GET' -Auth -WakeUp | Select-Object -ExpandProperty response
 }

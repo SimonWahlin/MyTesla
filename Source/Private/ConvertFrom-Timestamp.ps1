@@ -1,13 +1,12 @@
 function ConvertFrom-Timestamp {
     [CmdletBinding()]
     param (
-        [parameter(Mandatory,ValueFromPipeline)]
+        [parameter(Mandatory, ValueFromPipeline)]
         [double]
         $Timestamp
     )
     
     process {
-        [System.DateTimeOffset]::UnixEpoch.AddSeconds($Timestamp)
+        [System.DateTimeOffset]::UnixEpoch.AddSeconds($Timestamp).ToLocalTime()
     }
-  
 }

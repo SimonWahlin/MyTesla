@@ -1,10 +1,15 @@
 function Connect-Tesla {
-    [CmdletBinding(DefaultParameterSetName='Credential')]
+    [CmdletBinding(DefaultParameterSetName = 'Credential')]
     param (
         # Credentials used to connect to Tesla API
         [Parameter(ParameterSetName = 'Credential', Mandatory)]
         [pscredential]
         $Credential,
+
+        # MFA Code from Authenticator app. Only needed if MFA is enabled on your account.
+        [Parameter(ParameterSetName = 'Credential')]
+        [string]
+        $MFACode,
 
         # Refreshtoken used to connect to Tesla API
         [Parameter(ParameterSetName = 'RefreshToken', Mandatory)]
@@ -14,42 +19,51 @@ function Connect-Tesla {
         # Access token used to connect to Tesla API
         [Parameter(ParameterSetName = 'AccessToken', Mandatory)]
         [securestring]
-        $AccessToken
+        $AccessToken,
+
+        # Region to sign in to, can be USA or China (if you are not in China, use USA)
+        [Parameter(ParameterSetName = 'RefreshToken')]
+        [Parameter(ParameterSetName = 'Credential')]
+        [ValidateSet('USA', 'China')]
+        [string]
+        $Region = 'USA',
+
+        [Parameter(ParameterSetName = 'RefreshToken')]
+        [Parameter(ParameterSetName = 'Credential')]
+        [switch]
+        $PassThru
     )
 
-    if ($pscmdlet.ParameterSetName -eq 'AccessToken') {
-        $Token = [PSCustomObject]@{
-            'access_token' = Unprotect-SecureString -SecureString $AccessToken
+    $ErrorActionPreference = 'Stop'
+    switch ($pscmdlet.ParameterSetName) {
+        'Credential' { 
+            $Username = $Credential.UserName
+            $Password = $Credential.GetNetworkCredential().Password
+
+            $LoginInfo = Get-LoginInfo
+            $Code = Get-TeslaAuthCode -Username $Username -Password $Password -MfaCode $MFACode -LoginInfo $LoginInfo -Region $Region
+            $AuthTokens = Get-TeslaAuthToken -Code $Code -LoginInfo $LoginInfo -Region $Region
+            $Token = Get-TeslaAccessToken -AuthToken $AuthTokens.AccessToken
+            $Token['AccessToken'] = $Token['AccessToken'] | ConvertTo-SecureString -AsPlainText -Force
+            $Token['RefreshToken'] = $Token['RefreshToken'] | ConvertTo-SecureString -AsPlainText -Force
+            $Token['IdToken'] = $AuthTokens.IdToken
         }
-    }
-    else {
-        $Params = @{
-            Fragment = 'oauth/token'
-            Method   = 'POST'
-            Body     = @{
-                'client_id'     = '81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384'
-                'client_secret' = 'c7257eb71a564034f9419ee651c7d0e5f7aa6bfbd18bafb5c5c033b093bb2fa3'
-            }
+        'RefreshToken' { 
+            throw 'Refresh token support not implemented'
         }
-    
-        switch ($pscmdlet.ParameterSetName) {
-            'Credential' { 
-                $Params['Body']['grant_type'] = 'password'
-                $Params['Body']['email'] = $Credential.UserName
-                $Params['Body']['password'] = $Credential.GetNetworkCredential().Password
-            }
-            'RefreshToken' { 
-                $Params['Body']['grant_type'] = 'refresh_token'
-                $Params['Body']['refresh_token'] = Unprotect-SecureString -SecureString $RefreshToken
-            }
-            Default {
-                throw "Unsupported parameter set name: [$($pscmdlet.ParameterSetName)]"
+        'AccessToken' {
+            $Token = [PSCustomObject]@{
+                'AccessToken' = $AccessToken
             }
         }
-    
-        $Token = Invoke-TeslaAPI @Params
+        Default {
+            throw "Unsupported parameter set name: [$($pscmdlet.ParameterSetName)]"
+        }
     }
 
     $Script:TeslaConfiguration['Token'] = $Token
+    if ($PassThru.IsPresent) {
+        Write-Output $Token
+    }
 
 }

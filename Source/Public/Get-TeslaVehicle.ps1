@@ -3,14 +3,14 @@ function Get-TeslaVehicle {
     param (
         # Id of Tesla Vehicle
         [Parameter()]
-        [ValidateLength(11,200)]
+        [ValidateLength(11, 200)]
         [ValidatePattern('\d+', ErrorMessage = '{0} is not a valid vehicle ID.')]
         [string]
         $Id
     )
     
     $Fragment = 'api/1/vehicles'
-    if($PSBoundParameters.ContainsKey('Id')) {
+    if ($PSBoundParameters.ContainsKey('Id')) {
         $Fragment += "/$Id"
     }
 
