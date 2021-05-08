@@ -72,7 +72,97 @@ function Get-LoginInfo {
     return $LoginInfo
 }
 
+function Test-MfaId {
+    param(
+        [Parameter(Mandatory)]
+        [string]
+        $MfaId,
+
+        [Parameter(Mandatory)]
+        [string]
+        $MfaCode,
+
+        [Parameter(Mandatory)]
+        [object]
+        $LoginInfo,
+
+        [Parameter()]
+        [ValidateSet('USA', 'China')]
+        $Region = 'USA'
+    )
+
+    $BaseUri = $Script:AuthUrl[$Region]
+    $Uri = [System.UriBuilder]::new("$BaseUri/oauth2/v3/authorize/mfa/verify")
+    $Params = @{
+        Uri         = $Uri.Uri 
+        Method      = 'POST' 
+        Body        = @{
+            'factor_id'      = $MfaId
+            'passcode'       = $MfaCode
+            'transaction_id' = $LoginInfo.FormFields.transaction_id
+        } | ConvertTo-Json
+        ContentType = 'application/json' 
+        UserAgent   = 'MyTesla PowerShell Module' 
+        WebSession  = $LoginInfo.Session #I hope I don't need a cookie here, but maybe I do...
+        Headers     = @{
+            'Accept'          = 'application/json'
+            'Accept-Encoding' = 'gzip, deflate'
+            'Referrer'        = $BaseUri
+        }
+    }
+    $Response = Invoke-WebRequest @Params -ErrorAction 'Stop' 
+    $Content = $Response.Content | ConvertFrom-Json
+    $IsValid = [bool]$Content.data.valid
+    return $IsValid
+}
+
+function Get-MFAFactorId {
+    param(
+        [string]
+        $MfaCode,
+
+        [object]
+        $LoginInfo,
+        
+        [ValidateSet('USA','China')]
+        [string]
+        $Region = 'USA'
+    )
+    $BaseUri = $Script:AuthUrl[$Region]
+    $Uri = [System.UriBuilder]::new("$BaseUri/oauth2/v3/authorize/mfa/factors")
+    $QueryString = [System.Web.HttpUtility]::ParseQueryString($Uri.Query)
+    $QueryString['transaction_id'] = $LoginInfo.FormFields.transaction_id
+    $Uri.Query = $QueryString.ToString()
+
+    $Params = @{
+        Uri                = $Uri.Uri 
+        Method             = 'GET' 
+        UserAgent          = 'MyTesla PowerShell Module' 
+        WebSession         = $LoginInfo.Session 
+        MaximumRedirection = 0 
+        Headers            = @{
+            'Accept'          = 'application/json'
+            'Accept-Encoding' = 'gzip, deflate'
+        }
+    }
+    $Response = Invoke-RestMethod @Params -ErrorAction 'Stop'
+    foreach ($MfaId in $Response.data) {
+        if (Test-MfaId -MfaId $MfaId.id -MfaCode $MfaCode -LoginInfo $LoginInfo -Region $Region) {
+            return $true
+        }
+    }
+    # If we get here, MFA was invalid
+    throw 'MFA not valid'
+
+}
+
 function Get-TeslaAuthCode {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSAvoidUsingPlainTextForPassword', 
+        'Password', 
+        Justification = 'We are sending the password as plain text in body, 
+                         not really a point to have it in a securestring in this private function.'
+    )]
     param(
         [string] $Username, 
         [string] $Password, 
@@ -113,9 +203,13 @@ function Get-TeslaAuthCode {
         $Response = Invoke-WebRequest @Params -ErrorAction 'Stop'
 
         if ($Response.StatusCode -eq [System.Net.HttpStatusCode]::OK -and $Response.Content.Contains('passcode')) {
-            if ($PSBoundParameters.ContainsKey('MfaCode')) {
+            if (-not [string]::IsNullOrEmpty($MfaCode)) {
                 #TODO: Implement MFA!
-                throw 'MFA support not implemented'
+                # Not sure what to do with MFAID tbh
+                $MFAID = Get-MFAFactorId -MfaCode $MfaCode -LoginInfo $LoginInfo -Region $Region
+                $Code = Get-TeslaAuthCodeMfa -Region $Region -LoginInfo $LoginInfo
+                return $Code
+                # throw 'MFA support not implemented'
             }
             else {
                 throw 'MFA code is required.'
@@ -142,13 +236,72 @@ function Get-TeslaAuthCode {
                 throw 'Redirect location not found.'
             }
         }
-    }
-    catch {
-        throw 'Unexpected error'
+        else {
+            throw # just re-throw what ever we got
+        }
     }
     
 }
 
+function Get-TeslaAuthCodeMfa {
+    param(
+        $LoginInfo,
+        [ValidateSet('USA', 'China')]
+        [string] $Region = 'USA'
+    )
+
+    $BaseUri = $Script:AuthUrl[$Region]
+    $Uri = [System.UriBuilder]::new("$BaseUri/oauth2/v3/authorize")
+    $Uri.Port = -1
+
+    $Body = [System.Collections.Generic.Dictionary[string,string]]::new()
+    $Body.Add('transaction_id',$LoginInfo.FormFields['transaction_id'])
+
+    $QueryString = [System.Web.HttpUtility]::ParseQueryString($Uri.Query)
+    $QueryString['client_id'] = 'ownerapi'
+    $QueryString['code_challenge'] = $LoginInfo.CodeChallenge
+    $QueryString['code_challenge_method'] = 'S256'
+    $QueryString['redirect_uri'] = "$BaseUri/void/callback"
+    $QueryString['response_type'] = 'code'
+    $QueryString['scope'] = 'openid email offline_access'
+    $QueryString['state'] = $LoginInfo.State
+    $Uri.Query = $QueryString.ToString()
+    try {
+        $Params = @{
+            Uri                = $Uri.Uri
+            Method             = 'POST' 
+            ContentType        = 'application/x-www-form-urlencoded' 
+            Body               = [System.Text.Encoding]::UTF8.GetString([System.Net.Http.FormUrlEncodedContent]::new($Body).ReadAsByteArrayAsync().Result)
+            UserAgent          = 'MyTesla PowerShell Module' 
+            WebSession         = $LoginInfo.Session 
+            MaximumRedirection = 0 
+            Headers            = @{
+                'Accept'          = 'application/json'
+                'Accept-Encoding' = 'gzip, deflate'
+            }
+        }
+        $null = Invoke-WebRequest @Params -ErrorAction 'Stop'
+        # If we get here, we failed, lets throw
+        throw 'Failed to get AuthCode with MFA, no redirect.'
+    }
+    catch [Microsoft.PowerShell.Commands.HttpResponseException] {
+        if ($_.exception.response.StatusCode -eq [System.Net.HttpStatusCode]::Redirect) {
+            [uri]$Location = $_.exception.response.headers.Location.OriginalString
+            if (-not [string]::IsNullOrEmpty($Location)) {
+                $Code = [System.Web.HttpUtility]::ParseQueryString($Location.Query).Get('Code')
+                if (-not [string]::IsNullOrEmpty($Code)) {
+                    return $Code
+                }
+                else {
+                    throw 'No auth code received. Please try again later.'
+                }
+            }
+            else {
+                throw 'Redirect location not found.'
+            }
+        }
+    }
+}
 function Get-TeslaAuthToken {
     [CmdletBinding()]
     param (
