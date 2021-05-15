@@ -29,19 +29,32 @@ function Invoke-TeslaAPI {
     if ($WakeUp.IsPresent) {
         $Now = [System.DateTimeOffset]::Now
         $LastSeenSince = ($Now - $Script:TeslaConfiguration['LastSeen']).TotalMinutes
-        if ($LastSeenSince -gt 8) {
-            Write-Verbose -Message 'Waking up car...'
-            $ResumeParams = @{
-                Wait = $true
+        if ($LastSeenSince -gt 1) {
+            $Vehicle = Get-TeslaVehicle
+            switch ($Vehicle.state) {
+                'asleep' {
+                    Write-Verbose -Message 'Waking up car...'
+                    $ResumeParams = @{
+                        Wait = $true
+                    }
+                    if ($Fragment -match '^api\/1\/vehicles\/(\d+)') {
+                        $ResumeParams['Id'] = $Matches[1]
+                    }
+                    $null = Resume-TeslaVehicle @ResumeParams
+                    Write-Verbose -Message 'Car is woken up'
+                    break
+                }
+                'online' {
+                    Write-Verbose -Message 'Car is online'
+                    break
+                }
+                Default {
+                    throw "Unknown state: $($Vehicle.state)"
+                }
             }
-            if ($Fragment -match '^api\/1\/vehicles\/(\d+)') {
-                $ResumeParams['Id'] = $Matches[1]
-            }
-            $null = Resume-TeslaVehicle @ResumeParams
-            Write-Verbose -Message 'Car is online'
         }
         else {
-            Write-Verbose -Message 'Car seen recently, no need to wake up'
+            Write-Verbose -Message "Car seen $LastSeenSince minutes ago ($($Script:TeslaConfiguration['LastSeen'])), no need to wake up"
         }
     }
 
