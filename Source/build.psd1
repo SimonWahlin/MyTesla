@@ -5,4 +5,5 @@
     SourceDirectories = 'Classes','Private','Public'
     PublicFilter = 'Public\*.ps1'
     VersionedOutputDirectory = $true
+    CopyPaths = @('../LICENSE')
 }
