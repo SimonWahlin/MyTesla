@@ -1,24 +1,41 @@
-function Get-RandomString ([int]$Length) {
+function Get-RandomString {
+    param (
+        [Parameter(Mandatory)]
+        [int]
+        $Length
+    )
     -join (Get-Random -InputObject 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.ToCharArray() -Count $Length)
 }
 
 function ConvertTo-SHA256Hash {
     param(
         [Parameter(Mandatory, ValueFromPipeline)]
-        [string]$String
+        [string]
+        $String
     )
     process {
         $Hasher = [System.Security.Cryptography.SHA256]::Create()
         $HashBytes = $Hasher.ComputeHash([System.Text.Encoding]::Default.GetBytes($String))
-        Write-Output (ConvertTo-Hex -Bytes $HashBytes -ToUpper $false)
+        $Hash = ConvertTo-Hex -Bytes $HashBytes
+        Write-Output $Hash
     }
 }
 
-function ConvertTo-Hex ([byte[]]$Bytes, [bool]$ToUpper) {
-    $format = if ($ToUpper) { 'X2' } else { 'x2' }
-    $HexChars = $Bytes | Foreach-Object -MemberName ToString -ArgumentList $format
-    $HexString = -join $HexChars
-    Write-Output $HexString
+function ConvertTo-Hex {
+    param(
+        [Parameter(ValueFromPipeline)]
+        [byte[]]
+        $Bytes,
+
+        [switch]
+        $ToUpper
+    )
+    process {
+        $format = if ($ToUpper.IsPresent) { 'X2' } else { 'x2' }
+        $HexChars = $Bytes | Foreach-Object -MemberName ToString -ArgumentList $format
+        $HexString = -join $HexChars
+        Write-Output $HexString
+    }
 }
 
 function ConvertTo-Base64 {
@@ -31,48 +48,189 @@ function ConvertTo-Base64 {
     }
 }
 
-function Get-LoginInfo {
+function ConvertTo-UrlEncodedContent {
+    [CmdletBinding()]
+    [OutputType([String])]
+    param(
+        [hashtable]
+        $Hashtable
+    )
+    $Dictionary = [System.Collections.Generic.Dictionary[string, string]]::new()
+    foreach ($key in $Hashtable.Keys) {
+        $Dictionary.Add($key, $Hashtable[$key])
+    }
+    $FormUrlencodedContent = [System.Net.Http.FormUrlEncodedContent]::new($Dictionary)
+    return [System.Text.Encoding]::UTF8.GetString($FormUrlencodedContent.ReadAsByteArrayAsync().Result)
+}
+function ConvertTo-QueryString {
+    [CmdletBinding()]
+    [OutputType([String])]
+    param(
+        [System.Collections.Specialized.OrderedDictionary]
+        $Hashtable
+    )
+    $QueryString = [System.Web.HttpUtility]::ParseQueryString('')
+    foreach ($key in $Hashtable.Keys) {
+        $QueryString.Add($key, $Hashtable[$key])
+    }
+    return $QueryString.ToString()
+}
+
+function New-LoginSession {
     param(
         [validateset('USA', 'China')]
         [string]
         $Region = 'USA'
     )
-    
-    $LoginInfo = @{
+
+    $LoginSession = @{
         'CodeVerifier' = Get-RandomString -Length 86
         'State'        = Get-RandomString -Length 20
+        'Region'       = $Region
+        'BaseUri'      = $Script:AuthUrl[$Region]
+        'UserAgent'    = '007'
     }
-    $LoginInfo['CodeChallenge'] = $LoginInfo['CodeVerifier'] | ConvertTo-SHA256Hash | ConvertTo-Base64
+    $LoginSession['CodeChallenge'] = $LoginSession['CodeVerifier'] | ConvertTo-SHA256Hash | ConvertTo-Base64
 
-    $BaseUri = $Script:AuthUrl[$Region]
-    $Uri = [System.UriBuilder]::new("$BaseUri/oauth2/v3/authorize")
-    $Uri.Port = -1
-    
-    $QueryString = [System.Web.HttpUtility]::ParseQueryString($Uri.Query)
-    $QueryString['client_id'] = 'ownerapi'
-    $QueryString['code_challenge'] = $LoginInfo.CodeChallenge
-    $QueryString['code_challenge_method'] = 'S256'
-    $QueryString['redirect_uri'] = "$BaseUri/void/callback"
-    $QueryString['response_type'] = 'code'
-    $QueryString['scope'] = 'openid email offline_access'
-    $QueryString['state'] = $LoginInfo.State
-    $Uri.Query = $QueryString.ToString()
+    $Fragment = 'oauth2/v3/authorize'
+    $Uri = [System.UriBuilder]::new('https', $LoginSession.BaseUri, 443, $Fragment)
 
-    $Response = Invoke-WebRequest -Uri $Uri.Uri -SessionVariable 'WebSession'
-    
-    # $FormFields = @{}
-    $FormFields = [System.Collections.Generic.Dictionary[string, string]]::new()
+    $Query = [ordered]@{
+        'client_id'             = 'ownerapi'
+        'code_challenge'        = $LoginSession.CodeChallenge
+        'code_challenge_method' = 'S256'
+        'redirect_uri'          = [System.UriBuilder]::new('https', $LoginSession.BaseUri, 443, 'void/callback').Uri.ToString()
+        'response_type'         = 'code'
+        'scope'                 = 'openid email offline_access'
+        'state'                 = $LoginSession.State
+    }
+    $Uri.Query = ConvertTo-QueryString -Hashtable $Query
+
+    $Params = @{
+        Uri                = $Uri.Uri.ToString()
+        Method             = 'GET'
+        UserAgent          = $LoginSession.UserAgent
+        WebSession         = $LoginSession.WebSession
+        MaximumRedirection = 0
+        Headers            = @{
+            'Accept'          = 'application/json'
+            'Accept-Encoding' = 'gzip, deflate'
+        }
+    }
+    $Response = Invoke-WebRequest @Params -SessionVariable 'WebSession' -ErrorAction 'Stop'
+    $FormFields = @{}
     [Regex]::Matches($Response.Content, 'type=\"hidden\" name=\"(?<name>.*?)\" value=\"(?<value>.*?)\"') | Foreach-Object {
         $FormFields.Add($_.Groups['name'].Value, $_.Groups['value'].Value)
     }
+    $LoginSession.FormFields = $FormFields
+    $LoginSession['WebSession'] = $WebSession
 
-    $LoginInfo.FormFields = $FormFields
-    $LoginInfo['Session'] = $WebSession
-
-    return $LoginInfo
+    return $LoginSession
 }
 
-function Test-MfaId {
+function Get-TeslaAuthCode {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSAvoidUsingPlainTextForPassword',
+        'Password',
+        Justification = 'We are sending the password as plain text in body,
+                         not really a point to have it in a securestring in this private function.'
+    )]
+    param(
+        [Parameter(Mandatory)]
+        [string]
+        $Username,
+
+        [Parameter(Mandatory)]
+        [string]
+        $Password,
+
+        [Parameter()]
+        [string]
+        $MfaCode,
+
+        [Parameter(Mandatory)]
+        [hashtable]
+        $LoginSession
+    )
+    $LoginSession.FormFields['identity'] = $Username
+    $LoginSession.FormFields['credential'] = $Password
+
+    $Fragment = 'oauth2/v3/authorize'
+    $Uri = [System.UriBuilder]::new('https', $LoginSession.BaseUri, 443, $Fragment)
+
+    $Query = [ordered]@{
+        'client_id'             = 'ownerapi'
+        'code_challenge'        = $LoginSession.CodeChallenge
+        'code_challenge_method' = 'S256'
+        'redirect_uri'          = [System.UriBuilder]::new('https', $LoginSession.BaseUri, 443, 'void/callback').Uri.ToString()
+        'response_type'         = 'code'
+        'scope'                 = 'openid email offline_access'
+        'state'                 = $LoginSession.State
+    }
+    $Uri.Query = ConvertTo-QueryString -Hashtable $Query
+
+    # Try here to catch HTTP Redirect
+    try {
+        $Body = ConvertTo-UrlEncodedContent $LoginSession.FormFields
+        $Params = @{
+            Uri                = $Uri.Uri.ToString()
+            Method             = 'POST'
+            ContentType        = 'application/x-www-form-urlencoded'
+            Body               = $Body
+            UserAgent          = $LoginSession.UserAgent
+            WebSession         = $LoginSession.WebSession
+            MaximumRedirection = 0
+            Headers            = @{
+                'Accept'          = 'application/json'
+                'Accept-Encoding' = 'gzip, deflate'
+            }
+        }
+        $Response = Invoke-WebRequest @Params -ErrorAction 'Stop'
+        if ($Response.StatusCode -eq [System.Net.HttpStatusCode]::OK -and $Response.Content.Contains('passcode')) {
+            Write-Verbose -Message 'MFA Requried'
+            $MFARequirements = Get-MFARequirements -LoginSession $LoginSession
+            if (-not [string]::IsNullOrEmpty($MfaCode)) {
+                foreach ($MFAId in $MFARequirements) {
+                    if (Submit-MfaCode -MfaId $MfaId.id -MfaCode $MfaCode -LoginSession $LoginSession) {
+                        $Code = Get-TeslaAuthCodeMfa -LoginSession $LoginSession
+                        return $Code
+                    }
+                }
+            }
+            else {
+                throw 'MFA code is required.' # use $MFARequirements here
+            }
+
+        }
+        else {
+            throw 'Failed to get AuthCode, no redirect.'
+        }
+    }
+    catch [Microsoft.PowerShell.Commands.HttpResponseException] {
+        if ($_.exception.response.StatusCode -eq [System.Net.HttpStatusCode]::Redirect) {
+            Write-Verbose -Message 'Got redirect, parsing Location without MFA'
+            [uri]$Location = $_.exception.response.headers.Location.OriginalString
+            if (-not [string]::IsNullOrEmpty($Location)) {
+                $Code = [System.Web.HttpUtility]::ParseQueryString($Location.Query).Get('Code')
+                if (-not [string]::IsNullOrEmpty($Code)) {
+                    return $Code
+                }
+                else {
+                    throw 'No auth code received. Please try again later.'
+                }
+            }
+            else {
+                throw 'Redirect location not found.'
+            }
+        }
+        else {
+            throw
+        }
+    }
+
+}
+
+function Submit-MfaCode {
     param(
         [Parameter(Mandatory)]
         [string]
@@ -83,142 +241,114 @@ function Test-MfaId {
         $MfaCode,
 
         [Parameter(Mandatory)]
-        [object]
-        $LoginInfo,
-
-        [Parameter()]
-        [ValidateSet('USA', 'China')]
-        $Region = 'USA'
+        [hashtable]
+        $LoginSession
     )
-
-    $BaseUri = $Script:AuthUrl[$Region]
-    $Uri = [System.UriBuilder]::new("$BaseUri/oauth2/v3/authorize/mfa/verify")
+    $Fragment = 'oauth2/v3/authorize/mfa/verify'
+    $Uri = [System.UriBuilder]::new('https', $LoginSession.BaseUri, 443, $Fragment)
     $Params = @{
-        Uri         = $Uri.Uri 
-        Method      = 'POST' 
-        Body        = @{
+        Uri         = $Uri.Uri.ToString()
+        Method      = 'POST'
+        ContentType = 'application/json; charset=utf-8'
+        Body        = [ordered]@{
             'factor_id'      = $MfaId
             'passcode'       = $MfaCode
-            'transaction_id' = $LoginInfo.FormFields.transaction_id
-        } | ConvertTo-Json
-        ContentType = 'application/json' 
-        UserAgent   = 'MyTesla PowerShell Module' 
-        WebSession  = $LoginInfo.Session #I hope I don't need a cookie here, but maybe I do...
+            'transaction_id' = $LoginSession.FormFields.transaction_id
+        } | ConvertTo-Json -Compress
+        
+        UserAgent   = $LoginSession.UserAgent
+        WebSession  = $LoginSession.WebSession
         Headers     = @{
             'Accept'          = 'application/json'
             'Accept-Encoding' = 'gzip, deflate'
-            'Referrer'        = $BaseUri
+            'Referer'         = [System.UriBuilder]::new('https', $LoginSession.BaseUri, 443, $null).Uri.ToString()
         }
     }
-    $Response = Invoke-WebRequest @Params -ErrorAction 'Stop' 
+    $Response = Invoke-WebRequest @Params -ErrorAction 'Stop'
     $Content = $Response.Content | ConvertFrom-Json
     $IsValid = [bool]$Content.data.valid
     return $IsValid
 }
 
-function Get-MFAFactorId {
+function Get-MFARequirements {
     param(
-        [string]
-        $MfaCode,
-
-        [object]
-        $LoginInfo,
-        
-        [ValidateSet('USA','China')]
-        [string]
-        $Region = 'USA'
+        [Parameter(Mandatory)]
+        [hashtable]
+        $LoginSession
     )
-    $BaseUri = $Script:AuthUrl[$Region]
-    $Uri = [System.UriBuilder]::new("$BaseUri/oauth2/v3/authorize/mfa/factors")
-    $QueryString = [System.Web.HttpUtility]::ParseQueryString($Uri.Query)
-    $QueryString['transaction_id'] = $LoginInfo.FormFields.transaction_id
-    $Uri.Query = $QueryString.ToString()
+    $Fragment = 'oauth2/v3/authorize/mfa/factors'
+    $Uri = [System.UriBuilder]::new('https', $LoginSession.BaseUri, 443, $Fragment)
+    $Query = [ordered]@{
+        'transaction_id' = $LoginSession.FormFields.transaction_id
+    }
+    $Uri.Query = ConvertTo-QueryString -Hashtable $Query
 
     $Params = @{
-        Uri                = $Uri.Uri 
-        Method             = 'GET' 
-        UserAgent          = 'MyTesla PowerShell Module' 
-        WebSession         = $LoginInfo.Session 
-        MaximumRedirection = 0 
+        Uri                = $Uri.Uri
+        Method             = 'GET'
+        UserAgent          = $LoginSession.UserAgent
+        WebSession         = $LoginSession.WebSession
+        MaximumRedirection = 0
         Headers            = @{
             'Accept'          = 'application/json'
             'Accept-Encoding' = 'gzip, deflate'
         }
     }
-    $Response = Invoke-RestMethod @Params -ErrorAction 'Stop'
-    foreach ($MfaId in $Response.data) {
-        if (Test-MfaId -MfaId $MfaId.id -MfaCode $MfaCode -LoginInfo $LoginInfo -Region $Region) {
-            return $true
-        }
-    }
-    # If we get here, MFA was invalid
-    throw 'MFA not valid'
+    $Response = Invoke-WebRequest @Params -ErrorAction 'Stop'
+    $Content = $Response.Content | ConvertFrom-Json
+    return $Content.data
+    # foreach ($MfaId in $Content.data) {
+    #     if (Test-MfaCode -MfaId $MfaId.id -MfaCode $MfaCode -LoginSession $LoginSession) {
+    #         return $true
+    #     }
+    # }
 
+    # # If we get here, MFA was invalid
+    # return $false
 }
 
-function Get-TeslaAuthCode {
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
-        'PSAvoidUsingPlainTextForPassword', 
-        'Password', 
-        Justification = 'We are sending the password as plain text in body, 
-                         not really a point to have it in a securestring in this private function.'
-    )]
+function Get-TeslaAuthCodeMfa {
     param(
-        [string] $Username, 
-        [string] $Password, 
-        [string] $MfaCode, 
-        [hashtable] $LoginInfo,
-        [ValidateSet('USA', 'China')]
-        [string] $Region = 'USA'
+        [Parameter(Mandatory)]
+        [hashtable]
+        $LoginSession
     )
-    $LoginInfo.FormFields['identity'] = $Username
-    $LoginInfo.FormFields['credential'] = $Password
 
-    $BaseUri = $Script:AuthUrl[$Region]
-    $Uri = [System.UriBuilder]::new("$BaseUri/oauth2/v3/authorize")
-    $Uri.Port = -1
-    $QueryString = [System.Web.HttpUtility]::ParseQueryString($Uri.Query)
-    $QueryString['client_id'] = 'ownerapi'
-    $QueryString['code_challenge'] = $LoginInfo.CodeChallenge
-    $QueryString['code_challenge_method'] = 'S256'
-    $QueryString['redirect_uri'] = "$BaseUri/void/callback"
-    $QueryString['response_type'] = 'code'
-    $QueryString['scope'] = 'openid email offline_access'
-    $QueryString['state'] = $LoginInfo.State
-    $Uri.Query = $QueryString.ToString()
+    $Fragment = 'oauth2/v3/authorize'
+    $Uri = [System.UriBuilder]::new('https',$LoginSession.BaseUri,443,$Fragment)
+
+    $Body = ConvertTo-UrlEncodedContent @{
+        'transaction_id' = $LoginSession.FormFields['transaction_id']
+    }
+
+    $Query = [ordered]@{
+        'client_id'             = 'ownerapi'
+        'code_challenge'        = $LoginSession.CodeChallenge
+        'code_challenge_method' = 'S256'
+        'redirect_uri'          = [System.UriBuilder]::new('https', $LoginSession.BaseUri, 443, 'void/callback').Uri.ToString()
+        'response_type'         = 'code'
+        'scope'                 = 'openid email offline_access'
+        'state'                 = $LoginSession.State
+    }
+    $Uri.Query = ConvertTo-QueryString -Hashtable $Query
+
     try {
         $Params = @{
-            Uri                = $Uri.Uri 
-            Method             = 'POST' 
-            ContentType        = 'application/x-www-form-urlencoded' 
-            Body               = [System.Text.Encoding]::UTF8.GetString([System.Net.Http.FormUrlEncodedContent]::new($LoginInfo.FormFields).ReadAsByteArrayAsync().Result)
-            UserAgent          = 'MyTesla PowerShell Module' 
-            WebSession         = $LoginInfo.Session 
-            MaximumRedirection = 0 
+            Uri                = $Uri.Uri.ToString()
+            Method             = 'POST'
+            ContentType        = 'application/x-www-form-urlencoded'
+            Body               = $Body
+            UserAgent          = $LoginSession.UserAgent
+            WebSession         = $LoginSession.WebSession
+            MaximumRedirection = 0
             Headers            = @{
                 'Accept'          = 'application/json'
                 'Accept-Encoding' = 'gzip, deflate'
             }
         }
         $Response = Invoke-WebRequest @Params -ErrorAction 'Stop'
-
-        if ($Response.StatusCode -eq [System.Net.HttpStatusCode]::OK -and $Response.Content.Contains('passcode')) {
-            if (-not [string]::IsNullOrEmpty($MfaCode)) {
-                #TODO: Implement MFA!
-                # Not sure what to do with MFAID tbh
-                $MFAID = Get-MFAFactorId -MfaCode $MfaCode -LoginInfo $LoginInfo -Region $Region
-                $Code = Get-TeslaAuthCodeMfa -Region $Region -LoginInfo $LoginInfo
-                return $Code
-                # throw 'MFA support not implemented'
-            }
-            else {
-                throw 'MFA code is required.'
-            }
-
-        }
-        else {
-            throw 'Failed to get AuthCode, no redirect.'
-        }
+        # If we get here, we failed. Write terminating error.
+        Write-Error -Message 'Failed to get AuthCode with MFA, no redirect.' -TargetObject $Response -ErrorAction 'Stop'
     }
     catch [Microsoft.PowerShell.Commands.HttpResponseException] {
         if ($_.exception.response.StatusCode -eq [System.Net.HttpStatusCode]::Redirect) {
@@ -229,75 +359,11 @@ function Get-TeslaAuthCode {
                     return $Code
                 }
                 else {
-                    throw 'No auth code received. Please try again later.'
+                    Write-Error -Message 'No auth code received. Please try again later.' -Exception $_.Exception -TargetObject $_ -ErrorAction 'Stop'
                 }
             }
             else {
-                throw 'Redirect location not found.'
-            }
-        }
-        else {
-            throw # just re-throw what ever we got
-        }
-    }
-    
-}
-
-function Get-TeslaAuthCodeMfa {
-    param(
-        $LoginInfo,
-        [ValidateSet('USA', 'China')]
-        [string] $Region = 'USA'
-    )
-
-    $BaseUri = $Script:AuthUrl[$Region]
-    $Uri = [System.UriBuilder]::new("$BaseUri/oauth2/v3/authorize")
-    $Uri.Port = -1
-
-    $Body = [System.Collections.Generic.Dictionary[string,string]]::new()
-    $Body.Add('transaction_id',$LoginInfo.FormFields['transaction_id'])
-
-    $QueryString = [System.Web.HttpUtility]::ParseQueryString($Uri.Query)
-    $QueryString['client_id'] = 'ownerapi'
-    $QueryString['code_challenge'] = $LoginInfo.CodeChallenge
-    $QueryString['code_challenge_method'] = 'S256'
-    $QueryString['redirect_uri'] = "$BaseUri/void/callback"
-    $QueryString['response_type'] = 'code'
-    $QueryString['scope'] = 'openid email offline_access'
-    $QueryString['state'] = $LoginInfo.State
-    $Uri.Query = $QueryString.ToString()
-    try {
-        $Params = @{
-            Uri                = $Uri.Uri
-            Method             = 'POST' 
-            ContentType        = 'application/x-www-form-urlencoded' 
-            Body               = [System.Text.Encoding]::UTF8.GetString([System.Net.Http.FormUrlEncodedContent]::new($Body).ReadAsByteArrayAsync().Result)
-            UserAgent          = 'MyTesla PowerShell Module' 
-            WebSession         = $LoginInfo.Session 
-            MaximumRedirection = 0 
-            Headers            = @{
-                'Accept'          = 'application/json'
-                'Accept-Encoding' = 'gzip, deflate'
-            }
-        }
-        $null = Invoke-WebRequest @Params -ErrorAction 'Stop'
-        # If we get here, we failed, lets throw
-        throw 'Failed to get AuthCode with MFA, no redirect.'
-    }
-    catch [Microsoft.PowerShell.Commands.HttpResponseException] {
-        if ($_.exception.response.StatusCode -eq [System.Net.HttpStatusCode]::Redirect) {
-            [uri]$Location = $_.exception.response.headers.Location.OriginalString
-            if (-not [string]::IsNullOrEmpty($Location)) {
-                $Code = [System.Web.HttpUtility]::ParseQueryString($Location.Query).Get('Code')
-                if (-not [string]::IsNullOrEmpty($Code)) {
-                    return $Code
-                }
-                else {
-                    throw 'No auth code received. Please try again later.'
-                }
-            }
-            else {
-                throw 'Redirect location not found.'
+                Write-Error -Message 'Redirect location not found.' -Exception $_.Exception -TargetObject $_ -ErrorAction 'Stop'
             }
         }
     }
@@ -305,29 +371,30 @@ function Get-TeslaAuthCodeMfa {
 function Get-TeslaAuthToken {
     [CmdletBinding()]
     param (
+        [Parameter(Mandatory)]
         [string]
         $Code,
-        $LoginInfo,
-        [ValidateSet('USA', 'China')]
-        $Region = 'USA'
+
+        [Parameter(Mandatory)]
+        [hashtable]
+        $LoginSession
     )
-  
-    $BaseUri = $Script:AuthUrl[$Region]
-    $Uri = [System.UriBuilder]::new("$BaseUri/oauth2/v3/token")
-    $Uri.Port = -1
+
+    $Fragment = 'oauth2/v3/token'
+    $Uri = [System.UriBuilder]::new('https',$LoginSession.BaseUri,443,$Fragment)
     $Params = @{
-        Uri         = $Uri.Uri 
-        Method      = 'POST' 
-        Body        = @{
+        Uri         = $Uri.Uri.ToString()
+        Method      = 'POST'
+        Body        = [ordered]@{
             'grant_type'    = 'authorization_code'
             'client_id'     = 'ownerapi'
             'code'          = $Code
-            'code_verifier' = $LoginInfo.CodeVerifier
-            'redirect_uri'  = 'https://auth.tesla.com/void/callback'
-        } | ConvertTo-Json
-        ContentType = 'application/json' 
-        UserAgent   = 'MyTesla PowerShell Module' 
-        WebSession  = $LoginInfo.Session 
+            'code_verifier' = $LoginSession.CodeVerifier
+            'redirect_uri'  = [System.UriBuilder]::new('https', $LoginSession.BaseUri, 443, 'void/callback').Uri.ToString()
+        } | ConvertTo-Json -Compress
+        ContentType = 'application/json; charset=utf-8'
+        UserAgent   = $LoginSession.UserAgent
+        WebSession  = $LoginSession.WebSession
         Headers     = @{
             'Accept'          = 'application/json'
             'Accept-Encoding' = 'gzip, deflate'
@@ -357,19 +424,21 @@ function Get-TeslaAccessToken {
         $AuthToken
     )
 
+    $Fragment = 'oauth/token'
+    $Uri = [System.UriBuilder]::new('https','owner-api.teslamotors.com',443,$Fragment)
     $Params = @{
-        Uri         = 'https://owner-api.teslamotors.com/oauth/token'
+        Uri         = $Uri.Uri.ToString()
         Method      = 'POST'
         Body        = @{
             'grant_type'    = 'urn:ietf:params:oauth:grant-type:jwt-bearer'
             'client_id'     = '81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384'
             'client_secret' = 'c7257eb71a564034f9419ee651c7d0e5f7aa6bfbd18bafb5c5c033b093bb2fa3'
-        } | ConvertTo-Json
+        } | ConvertTo-Json -Compress
         Headers     = @{
             'Authorization' = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $AuthToken)
         }
-        ContentType = 'application/json' 
-        UserAgent   = 'MyTesla PowerShell Module' 
+        ContentType = 'application/json; charset=utf-8'
+        UserAgent   = '007'
     }
     $Response = Invoke-WebRequest @Params -ErrorAction 'Stop'
     $Content = $Response.Content | ConvertFrom-Json

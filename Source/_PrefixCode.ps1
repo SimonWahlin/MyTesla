@@ -4,6 +4,6 @@ $Script:TeslaConfiguration = @{
 }
 
 $Script:AuthUrl = @{
-    'USA' = 'https://auth.tesla.com'
-    'China' = 'https://auth.tesla.cn'
+    'USA' = 'auth.tesla.com'
+    'China' = 'auth.tesla.cn'
 }
