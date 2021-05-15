@@ -7,6 +7,6 @@ function ConvertFrom-Timestamp {
     )
     
     process {
-        [System.DateTimeOffset]::UnixEpoch.AddSeconds($Timestamp).ToLocalTime()
+        [System.DateTimeOffset]::UnixEpoch.AddMilliSeconds($Timestamp).ToLocalTime()
     }
 }
