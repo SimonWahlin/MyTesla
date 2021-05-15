@@ -40,9 +40,9 @@ function Connect-Tesla {
             $Username = $Credential.UserName
             $Password = $Credential.GetNetworkCredential().Password
 
-            $LoginInfo = Get-LoginInfo
-            $Code = Get-TeslaAuthCode -Username $Username -Password $Password -MfaCode $MFACode -LoginInfo $LoginInfo -Region $Region
-            $AuthTokens = Get-TeslaAuthToken -Code $Code -LoginInfo $LoginInfo -Region $Region
+            $LoginSession = New-LoginSession -Region $Region
+            $Code = Get-TeslaAuthCode -Username $Username -Password $Password -MfaCode $MFACode -LoginSession $LoginSession
+            $AuthTokens = Get-TeslaAuthToken -Code $Code -LoginSession $LoginSession
             $Token = Get-TeslaAccessToken -AuthToken $AuthTokens.AccessToken
             $Token['AccessToken'] = $Token['AccessToken'] | ConvertTo-SecureString -AsPlainText -Force
             $Token['RefreshToken'] = $Token['RefreshToken'] | ConvertTo-SecureString -AsPlainText -Force
