@@ -13,6 +13,17 @@ jobs:
     - name: Checkout project
       uses: actions/checkout@v2
 
+    - name: Fetch tags for GitVersion
+      run: git fetch --tags
+
+    - name: Fetch main for GitVersion
+      if: github.ref != 'refs/heads/main'
+      run: git branch --create-reflog main origin/main
+
+    - name: GitVersion
+      id: gitversion  # step id used as reference for output values
+      uses: roryprimrose/rungitversion@v1.0.0
+
     - name: Setup cache for build dependencies
       id: cacheBuildDependencies
       uses: actions/cache@v2
@@ -30,7 +41,7 @@ jobs:
         $ModulePath = Resolve-Path -Path tmp/Modules | Select-Object -ExpandProperty Path
         $Env:PSModulePath = $ModulePath, $Env:PSModulePath -join [System.IO.Path]::PathSeparator
         Import-Module ModuleBuilder
-        Build-Module -SourcePath .\Source -SemVer (gitversion /showvariable semver)
+        Build-Module -SourcePath .\Source -SemVer ${{ steps.gitversion.outputs.SemVer }}
       shell: pwsh
 
     - name: Upload built module
