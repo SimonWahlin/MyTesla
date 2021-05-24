@@ -8,7 +8,7 @@ function Start-TeslaVehicle {
         [string]
         $Id,
 
-        [Parmameter(Mandatory)]
+        [Parameter(Mandatory)]
         [securestring]
         $Password
     )

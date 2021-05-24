@@ -8,12 +8,12 @@ function Move-TeslaSunroof {
         [string]
         $Id,
 
-        [Parmameter(Mandatory, ParameterSetName = 'State')]
+        [Parameter(Mandatory, ParameterSetName = 'State')]
         [ValidateSet('Open', 'Closed', 'Comfort', 'Vent')]
         [string]
         $State,
         
-        [Parmameter(Mandatory, ParameterSetName = 'Percent')]
+        [Parameter(Mandatory, ParameterSetName = 'Percent')]
         [ValidateRange(0, 100)]
         [int]
         $Percent
