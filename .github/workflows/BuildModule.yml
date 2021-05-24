@@ -1,0 +1,50 @@
+name: BuildModule
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout project
+      uses: actions/checkout@v2
+
+    - name: Setup cache for build dependencies
+      id: cacheBuildDependencies
+      uses: actions/cache@v2
+      with:
+        path: tmp/Modules
+        key: ${{ hashFiles('Scripts/DownloadBuildDependencies.ps1') }}
+
+    - name: Download required build dependencies
+      if: steps.cacheBuildDependencies.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: ./Scripts/DownloadBuildDependencies.ps1
+
+    - name: Update PSModulePath
+      run: |
+        $ModulePath = Resolve-Path -Path tmp/Modules | Select-Object -ExpandProperty Path
+        $NewValue = $ModulesPath, $Env:PSModulePath -join [System.IO.Path]::PathSeparator
+        [environment]::SetEnvironmentVariable('PSModulePath', $NewValue, [System.EnvironmentVariableTarget]::User)
+      shell: pwsh
+
+    - name: Test modulepath
+      run: | 
+        $Env:PSModulePath
+      shell: pwsh
+
+    - name: Build Module
+      run: |
+        Import-Module ModuleBuilder
+        Build-Module -SourcePath .\Source -SemVer (gitversion /showvariable semver)
+      shell: pwsh
+
+    - name: Upload built module
+      uses: actions/upload-artifact@v2
+      with: 
+        name: MyTesla
+        path: bin/MyTesla
