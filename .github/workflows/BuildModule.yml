@@ -25,20 +25,10 @@ jobs:
       shell: pwsh
       run: ./Scripts/DownloadBuildDependencies.ps1
 
-    - name: Update PSModulePath
-      run: |
-        $ModulePath = Resolve-Path -Path tmp/Modules | Select-Object -ExpandProperty Path
-        $NewValue = $ModulesPath, $Env:PSModulePath -join [System.IO.Path]::PathSeparator
-        [environment]::SetEnvironmentVariable('PSModulePath', $NewValue, [System.EnvironmentVariableTarget]::User)
-      shell: pwsh
-
-    - name: Test modulepath
-      run: | 
-        $Env:PSModulePath
-      shell: pwsh
-
     - name: Build Module
       run: |
+        $ModulePath = Resolve-Path -Path tmp/Modules | Select-Object -ExpandProperty Path
+        $Env:PSModulePath = $ModulesPath, $Env:PSModulePath -join [System.IO.Path]::PathSeparator
         Import-Module ModuleBuilder
         Build-Module -SourcePath .\Source -SemVer (gitversion /showvariable semver)
       shell: pwsh
