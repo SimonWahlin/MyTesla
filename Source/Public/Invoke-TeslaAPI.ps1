@@ -52,6 +52,7 @@ function Invoke-TeslaAPI {
                     throw "Unknown state: $($Vehicle.state)"
                 }
             }
+            $Script:TeslaConfiguration['LastSeen'] = [System.DateTimeOffset]::Now
         }
         else {
             Write-Verbose -Message "Car seen $LastSeenSince minutes ago ($($Script:TeslaConfiguration['LastSeen'])), no need to wake up"
@@ -84,6 +85,4 @@ function Invoke-TeslaAPI {
     }
 
     Invoke-RestMethod @Params -ErrorAction 'Stop'
-
-    $Script:TeslaConfiguration['LastSeen'] = [System.DateTimeOffset]::Now
 }
