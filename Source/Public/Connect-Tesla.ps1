@@ -30,6 +30,11 @@ function Connect-Tesla {
 
         [Parameter(ParameterSetName = 'RefreshToken')]
         [Parameter(ParameterSetName = 'Credential')]
+        [string]
+        $UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.70',
+
+        [Parameter(ParameterSetName = 'RefreshToken')]
+        [Parameter(ParameterSetName = 'Credential')]
         [switch]
         $PassThru
     )
@@ -40,7 +45,7 @@ function Connect-Tesla {
             $Username = $Credential.UserName
             $Password = $Credential.GetNetworkCredential().Password
 
-            $LoginSession = New-LoginSession -Region $Region
+            $LoginSession = New-LoginSession -Region $Region -UserAgent $UserAgent
             $Code = Get-TeslaAuthCode -Username $Username -Password $Password -MfaCode $MFACode -LoginSession $LoginSession
             $AuthTokens = Get-TeslaAuthToken -Code $Code -LoginSession $LoginSession
             $Token = Get-TeslaAccessToken -AuthToken $AuthTokens.AccessToken

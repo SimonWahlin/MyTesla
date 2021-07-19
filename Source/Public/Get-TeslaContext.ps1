@@ -1,9 +1,6 @@
 function Get-TeslaContext {
     [CmdletBinding()]
-    param (
-        [switch]
-        $Force
-    )
+    param ()
     
     $Script:TeslaConfiguration.Clone()
     

@@ -80,7 +80,10 @@ function New-LoginSession {
     param(
         [validateset('USA', 'China')]
         [string]
-        $Region = 'USA'
+        $Region = 'USA',
+
+        [string]
+        $UserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.70'
     )
 
     $LoginSession = @{
@@ -88,7 +91,7 @@ function New-LoginSession {
         'State'        = Get-RandomString -Length 20
         'Region'       = $Region
         'BaseUri'      = $Script:AuthUrl[$Region]
-        'UserAgent'    = '007'
+        'UserAgent'    = $UserAgent
     }
     $LoginSession['CodeChallenge'] = $LoginSession['CodeVerifier'] | ConvertTo-SHA256Hash | ConvertTo-Base64
 
@@ -297,14 +300,6 @@ function Get-MFARequirements {
     $Response = Invoke-WebRequest @Params -ErrorAction 'Stop'
     $Content = $Response.Content | ConvertFrom-Json
     return $Content.data
-    # foreach ($MfaId in $Content.data) {
-    #     if (Test-MfaCode -MfaId $MfaId.id -MfaCode $MfaCode -LoginSession $LoginSession) {
-    #         return $true
-    #     }
-    # }
-
-    # # If we get here, MFA was invalid
-    # return $false
 }
 
 function Get-TeslaAuthCodeMfa {
