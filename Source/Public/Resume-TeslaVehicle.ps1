@@ -1,10 +1,3 @@
-# Uncertain of verb choice here.
-# Could be any of
-#     Initialize
-#     Restore
-#     Enable
-#     Resume
-
 function Resume-TeslaVehicle {
     [CmdletBinding()]
     param (

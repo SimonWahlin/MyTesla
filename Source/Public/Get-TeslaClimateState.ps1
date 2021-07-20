@@ -18,6 +18,5 @@ function Get-TeslaClimateState {
     }
 
     $Fragment = "api/1/vehicles/$Id/data_request/climate_state"
-    $null = Resume-TeslaVehicle -Id $Id -Wait
-    Invoke-TeslaAPI -Fragment $Fragment -Method 'GET' -Auth | Select-Object -ExpandProperty response
+    Invoke-TeslaAPI -Fragment $Fragment -Method 'GET' -Auth -WakeUp | Select-Object -ExpandProperty response
 }

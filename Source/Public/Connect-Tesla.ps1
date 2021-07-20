@@ -41,7 +41,7 @@ function Connect-Tesla {
 
     $ErrorActionPreference = 'Stop'
     switch ($pscmdlet.ParameterSetName) {
-        'Credential' { 
+        'Credential' {
             $Username = $Credential.UserName
             $Password = $Credential.GetNetworkCredential().Password
 
@@ -53,7 +53,7 @@ function Connect-Tesla {
             $Token['RefreshToken'] = $Token['RefreshToken'] | ConvertTo-SecureString -AsPlainText -Force
             $Token['IdToken'] = $AuthTokens.IdToken
         }
-        'RefreshToken' { 
+        'RefreshToken' {
             throw 'Refresh token support not implemented'
         }
         'AccessToken' {

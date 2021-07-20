@@ -18,6 +18,5 @@ function Lock-TeslaDoor {
     }
 
     $Fragment = "api/1/vehicles/$Id/command/door_lock"
-    $null = Resume-TeslaVehicle -Id $Id -Wait
-    Invoke-TeslaAPI -Fragment $Fragment -Method 'POST' -Auth | Select-Object -ExpandProperty response
+    Invoke-TeslaAPI -Fragment $Fragment -Method 'POST' -Auth -WakeUp | Select-Object -ExpandProperty response
 }

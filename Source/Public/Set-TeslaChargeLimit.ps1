@@ -51,8 +51,6 @@ function Set-TeslaChargeLimit {
         Default { throw 'This should not have happend.'}
     }
 
-    $null = Resume-TeslaVehicle -Id $Id -Wait
-
-    Invoke-TeslaAPI @Params -Method 'POST' -Auth | Select-Object -ExpandProperty response
+    Invoke-TeslaAPI @Params -Method 'POST' -Auth -WakeUp | Select-Object -ExpandProperty response
 
 }

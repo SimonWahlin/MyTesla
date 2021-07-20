@@ -19,6 +19,5 @@ function Get-TeslaVehicleData {
 
         
     $Fragment = "api/1/vehicles/$Id/vehicle_data"
-    $null = Resume-TeslaVehicle -Id $Id -Wait
-    Invoke-TeslaAPI -Fragment $Fragment -Method 'GET' -Auth | Select-Object -ExpandProperty response
+    Invoke-TeslaAPI -Fragment $Fragment -Method 'GET' -Auth -WakeUp | Select-Object -ExpandProperty response
 }

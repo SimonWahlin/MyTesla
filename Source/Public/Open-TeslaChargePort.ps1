@@ -19,6 +19,5 @@ function Open-TeslaChargePort {
 
     #Todo: Will this work without waking up the vehicle?
     $Fragment = "api/1/vehicles/$Id/command/charge_port_door_open"
-    $null = Resume-TeslaVehicle -Id $Id -Wait
-    Invoke-TeslaAPI -Fragment $Fragment -Method 'POST' -Auth | Select-Object -ExpandProperty response
+    Invoke-TeslaAPI -Fragment $Fragment -Method 'POST' -Auth -WakeUp | Select-Object -ExpandProperty response
 }

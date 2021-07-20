@@ -47,12 +47,10 @@ function Set-TeslaTemperature {
         }
     }
 
-    $null = Resume-TeslaVehicle -Id $Id -Wait
-    
     $Fragment = "api/1/vehicles/$Id/command/set_temps"
     $Body = @{
         driver_temp = $SetTemperature
         passenger_temp = $SetTemperature
     }
-    Invoke-TeslaAPI -Fragment $Fragment -Method 'POST' -Body $Body -Auth | Select-Object -ExpandProperty response
+    Invoke-TeslaAPI -Fragment $Fragment -Method 'POST' -Body $Body -Auth -WakeUp | Select-Object -ExpandProperty response
 }
