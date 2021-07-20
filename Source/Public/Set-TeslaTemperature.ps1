@@ -34,13 +34,13 @@ function Set-TeslaTemperature {
 
     switch ($PScmdlet.ParameterSetName) {
         'SetTemp' { 
-            $SetTemperature = '{0:N1}' -f $Temperature
+            $SetTemperature = [string]::Format([System.Globalization.CultureInfo]::GetCultureInfo('en-US'),'{0:N1}',$Temperature)
         }
         'High' { 
-            $SetTemperature = '{0:N1}' -f 28
+            $SetTemperature = [string]::Format([System.Globalization.CultureInfo]::GetCultureInfo('en-US'),'{0:N1}',28)
         }
         'Low' { 
-            $SetTemperature = '{0:N1}' -f 15
+            $SetTemperature = [string]::Format([System.Globalization.CultureInfo]::GetCultureInfo('en-US'),'{0:N1}',15)
         }
         Default {
             throw "Invalid parameter set: $($PScmdlet.ParameterSetName)"
